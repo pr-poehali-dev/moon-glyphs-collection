@@ -2,6 +2,7 @@ import { Canvas, extend, useFrame } from "@react-three/fiber"
 import { useAspect, useTexture } from "@react-three/drei"
 import { useMemo, useRef, useState, useEffect } from "react"
 import * as THREE from "three"
+import { AudioPlayer } from "@/components/audio-player"
 
 const TEXTUREMAP = { src: "https://i.postimg.cc/XYwvXN8D/img-4.png" }
 const DEPTHMAP = { src: "https://i.postimg.cc/2SHKQh2q/raw-4.webp" }
@@ -172,6 +173,9 @@ export const Hero3DWebGL = () => {
           >
             {subtitle}
           </div>
+        </div>
+        <div className={`mt-8 pointer-events-auto transition-opacity duration-700 ${subtitleVisible ? "opacity-100" : "opacity-0"}`}>
+          <AudioPlayer />
         </div>
       </div>
 
