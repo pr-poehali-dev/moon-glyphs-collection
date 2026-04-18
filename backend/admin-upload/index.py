@@ -1,6 +1,5 @@
 import os
 import json
-import base64
 import boto3
 import mimetypes
 
@@ -19,7 +18,7 @@ FOLDER_MAP = {
 
 
 def handler(event: dict, context) -> dict:
-    """Загрузка файла в S3 хранилище. Только для авторизованного администратора."""
+    """Генерирует presigned URL для прямой загрузки файла в S3. Только для администратора."""
 
     if event.get('httpMethod') == 'OPTIONS':
         return {
@@ -27,23 +26,17 @@ def handler(event: dict, context) -> dict:
             'headers': {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
+                'Access-Control-Allow-Headers': 'Content-Type',
                 'Access-Control-Max-Age': '86400',
             },
             'body': ''
         }
 
-    headers = event.get('headers') or {}
-    token = headers.get('X-Admin-Token') or headers.get('x-admin-token', '')
+    body = json.loads(event.get('body') or '{}')
     admin_password = os.environ.get('ADMIN_PASSWORD', '')
 
-    if not token or not admin_password or token != os.environ.get('ADMIN_TOKEN', token):
-        pass
-
-    body = json.loads(event.get('body') or '{}')
-
     password = body.get('password', '')
-    if password != admin_password:
+    if not password or password != admin_password:
         return {
             'statusCode': 401,
             'headers': {'Access-Control-Allow-Origin': '*'},
@@ -52,13 +45,12 @@ def handler(event: dict, context) -> dict:
 
     filename = body.get('filename', '')
     file_type = body.get('type', '')
-    file_data_b64 = body.get('data', '')
 
-    if not filename or not file_type or not file_data_b64:
+    if not filename or not file_type:
         return {
             'statusCode': 400,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': 'Не указан файл, тип или данные'}),
+            'body': json.dumps({'error': 'Не указан файл или тип'}),
         }
 
     ext = '.' + filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
@@ -72,8 +64,6 @@ def handler(event: dict, context) -> dict:
 
     folder = FOLDER_MAP.get(file_type, 'files/')
     key = folder + filename
-
-    file_bytes = base64.b64decode(file_data_b64)
     content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
 
     s3 = boto3.client(
@@ -83,11 +73,14 @@ def handler(event: dict, context) -> dict:
         aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
     )
 
-    s3.put_object(
-        Bucket='files',
-        Key=key,
-        Body=file_bytes,
-        ContentType=content_type,
+    presigned_url = s3.generate_presigned_url(
+        'put_object',
+        Params={
+            'Bucket': 'files',
+            'Key': key,
+            'ContentType': content_type,
+        },
+        ExpiresIn=300,
     )
 
     access_key = os.environ['AWS_ACCESS_KEY_ID']
@@ -96,5 +89,10 @@ def handler(event: dict, context) -> dict:
     return {
         'statusCode': 200,
         'headers': {'Access-Control-Allow-Origin': '*'},
-        'body': json.dumps({'ok': True, 'url': cdn_url, 'key': key}),
+        'body': json.dumps({
+            'upload_url': presigned_url,
+            'cdn_url': cdn_url,
+            'key': key,
+            'content_type': content_type,
+        }),
     }

@@ -113,12 +113,7 @@ export default function Admin() {
     setUploadResult(null)
 
     try {
-      const arrayBuffer = await file.arrayBuffer()
-      const bytes = new Uint8Array(arrayBuffer)
-      let binary = ""
-      bytes.forEach((b) => (binary += String.fromCharCode(b)))
-      const base64 = btoa(binary)
-
+      // Шаг 1: получаем presigned URL от бэкенда
       const res = await fetch(URLS.upload, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -126,17 +121,29 @@ export default function Admin() {
           password: savedPw.current,
           filename: file.name,
           type: fileType,
-          data: base64,
         }),
       })
 
       const data = await res.json()
-      if (res.ok) {
+      if (!res.ok) {
+        setUploadResult({ ok: false, message: data.error || "Ошибка получения ссылки" })
+        setUploading(false)
+        return
+      }
+
+      // Шаг 2: загружаем файл напрямую в S3
+      const uploadRes = await fetch(data.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": data.content_type },
+        body: file,
+      })
+
+      if (uploadRes.ok) {
         setUploadResult({ ok: true, message: `Файл загружен: ${file.name}` })
         if (fileInputRef.current) fileInputRef.current.value = ""
         loadFiles(savedPw.current)
       } else {
-        setUploadResult({ ok: false, message: data.error || "Ошибка загрузки" })
+        setUploadResult({ ok: false, message: "Ошибка загрузки в хранилище" })
       }
     } catch {
       setUploadResult({ ok: false, message: "Ошибка соединения" })
