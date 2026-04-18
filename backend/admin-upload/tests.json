@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Загрузка без авторизации",
+      "method": "POST",
+      "path": "/",
+      "body": {"filename": "test.mp3", "type": "audio", "data": ""},
+      "expectedStatus": 401,
+      "bodyMatcher": "none"
+    }
+  ]
+}

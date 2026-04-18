@@ -1,3 +1,6 @@
 {
+  "admin-upload": "https://functions.poehali.dev/41f97c10-35d1-443b-81ce-bca9952311a2",
+  "admin-login": "https://functions.poehali.dev/0d66d551-78ec-46d1-a2d6-ab52409c3091",
+  "admin-files": "https://functions.poehali.dev/af1a5474-784a-44ea-bfe4-4380a534e8d0",
   "get-tracks": "https://functions.poehali.dev/1cec9f6a-0cf5-4482-826b-d85c1ef0f401"
 }
