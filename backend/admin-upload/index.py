@@ -1,7 +1,9 @@
 import os
 import json
+import base64
 import boto3
 import mimetypes
+from urllib.parse import unquote
 
 
 ALLOWED_EXTENSIONS = {
@@ -18,7 +20,7 @@ FOLDER_MAP = {
 
 
 def handler(event: dict, context) -> dict:
-    """Генерирует presigned URL для прямой загрузки файла в S3. Только для администратора."""
+    """Загрузка файла в S3. Файл передаётся бинарно в теле запроса, метаданные — в заголовках."""
 
     if event.get('httpMethod') == 'OPTIONS':
         return {
@@ -26,16 +28,16 @@ def handler(event: dict, context) -> dict:
             'headers': {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Headers': 'Content-Type, X-Password, X-Filename, X-File-Type',
                 'Access-Control-Max-Age': '86400',
             },
             'body': ''
         }
 
-    body = json.loads(event.get('body') or '{}')
+    headers = {k.lower(): v for k, v in (event.get('headers') or {}).items()}
     admin_password = os.environ.get('ADMIN_PASSWORD', '')
 
-    password = body.get('password', '')
+    password = headers.get('x-password', '')
     if not password or password != admin_password:
         return {
             'statusCode': 401,
@@ -43,8 +45,8 @@ def handler(event: dict, context) -> dict:
             'body': json.dumps({'error': 'Не авторизован'}),
         }
 
-    filename = body.get('filename', '')
-    file_type = body.get('type', '')
+    filename = unquote(headers.get('x-filename', ''))
+    file_type = headers.get('x-file-type', '')
 
     if not filename or not file_type:
         return {
@@ -59,12 +61,18 @@ def handler(event: dict, context) -> dict:
         return {
             'statusCode': 400,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': f'Недопустимый формат файла: {ext}'}),
+            'body': json.dumps({'error': f'Недопустимый формат: {ext}'}),
         }
 
     folder = FOLDER_MAP.get(file_type, 'files/')
     key = folder + filename
     content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+
+    raw_body = event.get('body') or ''
+    if event.get('isBase64Encoded'):
+        file_bytes = base64.b64decode(raw_body)
+    else:
+        file_bytes = raw_body.encode('utf-8') if isinstance(raw_body, str) else raw_body
 
     s3 = boto3.client(
         's3',
@@ -73,14 +81,11 @@ def handler(event: dict, context) -> dict:
         aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
     )
 
-    presigned_url = s3.generate_presigned_url(
-        'put_object',
-        Params={
-            'Bucket': 'files',
-            'Key': key,
-            'ContentType': content_type,
-        },
-        ExpiresIn=300,
+    s3.put_object(
+        Bucket='files',
+        Key=key,
+        Body=file_bytes,
+        ContentType=content_type,
     )
 
     access_key = os.environ['AWS_ACCESS_KEY_ID']
@@ -89,10 +94,5 @@ def handler(event: dict, context) -> dict:
     return {
         'statusCode': 200,
         'headers': {'Access-Control-Allow-Origin': '*'},
-        'body': json.dumps({
-            'upload_url': presigned_url,
-            'cdn_url': cdn_url,
-            'key': key,
-            'content_type': content_type,
-        }),
+        'body': json.dumps({'ok': True, 'url': cdn_url, 'key': key}),
     }

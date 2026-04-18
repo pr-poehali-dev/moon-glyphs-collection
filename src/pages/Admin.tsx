@@ -113,39 +113,27 @@ export default function Admin() {
     setUploadResult(null)
 
     try {
-      // Шаг 1: получаем presigned URL от бэкенда
       const res = await fetch(URLS.upload, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: savedPw.current,
-          filename: file.name,
-          type: fileType,
-        }),
-      })
-
-      const data = await res.json()
-      if (!res.ok) {
-        setUploadResult({ ok: false, message: data.error || "Ошибка получения ссылки" })
-        setUploading(false)
-        return
-      }
-
-      // Шаг 2: загружаем файл напрямую в S3
-      const uploadRes = await fetch(data.upload_url, {
-        method: "PUT",
-        headers: { "Content-Type": data.content_type },
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          "X-Password": savedPw.current,
+          "X-Filename": encodeURIComponent(file.name),
+          "X-File-Type": fileType,
+        },
         body: file,
       })
 
-      if (uploadRes.ok) {
+      const data = await res.json()
+      if (res.ok) {
         setUploadResult({ ok: true, message: `Файл загружен: ${file.name}` })
         if (fileInputRef.current) fileInputRef.current.value = ""
         loadFiles(savedPw.current)
       } else {
-        setUploadResult({ ok: false, message: "Ошибка загрузки в хранилище" })
+        setUploadResult({ ok: false, message: data.error || "Ошибка загрузки" })
       }
-    } catch {
+    } catch (e) {
+      console.error(e)
       setUploadResult({ ok: false, message: "Ошибка соединения" })
     }
     setUploading(false)
